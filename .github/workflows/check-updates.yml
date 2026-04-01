@@ -1,0 +1,83 @@
+name: Check for Updates
+
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get current versions
+        id: current
+        run: |
+          CADDY=$(grep -oP '(?<=FROM caddy:)\d+\.\d+\.\d+' caddy.dockerfile | head -1)
+          SECURITY=$(grep -oP '(?<=caddy-security@v)\d+\.\d+\.\d+' caddy.dockerfile)
+          echo "caddy=${CADDY}" >> "$GITHUB_OUTPUT"
+          echo "security=${SECURITY}" >> "$GITHUB_OUTPUT"
+
+      - name: Get latest versions
+        id: latest
+        run: |
+          CADDY=$(curl -s https://api.github.com/repos/caddyserver/caddy/releases/latest | jq -r '.tag_name | ltrimstr("v")')
+          SECURITY=$(curl -s https://api.github.com/repos/greenpau/caddy-security/releases/latest | jq -r '.tag_name | ltrimstr("v")')
+          echo "caddy=${CADDY}" >> "$GITHUB_OUTPUT"
+          echo "security=${SECURITY}" >> "$GITHUB_OUTPUT"
+
+      - name: Check if already up to date or PR exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ steps.current.outputs.caddy }}" = "${{ steps.latest.outputs.caddy }}" ] && \
+             [ "${{ steps.current.outputs.security }}" = "${{ steps.latest.outputs.security }}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Already up to date"
+            exit 0
+          fi
+
+          OPEN_PR=$(gh pr list --head update-versions --state open --json number --jq 'length')
+          if [ "$OPEN_PR" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "PR already exists"
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Update versions
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          if [ "${{ steps.current.outputs.caddy }}" != "${{ steps.latest.outputs.caddy }}" ]; then
+            sed -i "s/caddy:${{ steps.current.outputs.caddy }}/caddy:${{ steps.latest.outputs.caddy }}/g" caddy.dockerfile
+            sed -i "s/| caddy          | ${{ steps.current.outputs.caddy }}/| caddy          | ${{ steps.latest.outputs.caddy }}/" README.md
+            sed -i "s/caddy-mfa:${{ steps.current.outputs.caddy }}/caddy-mfa:${{ steps.latest.outputs.caddy }}/" README.md
+          fi
+
+          if [ "${{ steps.current.outputs.security }}" != "${{ steps.latest.outputs.security }}" ]; then
+            sed -i "s/caddy-security@v${{ steps.current.outputs.security }}/caddy-security@v${{ steps.latest.outputs.security }}/" caddy.dockerfile
+            sed -i "s/| caddy-security | ${{ steps.current.outputs.security }}/| caddy-security | ${{ steps.latest.outputs.security }}/" README.md
+          fi
+
+      - name: Create pull request
+        if: steps.check.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "Update caddy ${{ steps.latest.outputs.caddy }}, caddy-security ${{ steps.latest.outputs.security }}"
+          title: "Update caddy ${{ steps.latest.outputs.caddy }}, caddy-security ${{ steps.latest.outputs.security }}"
+          body: |
+            | Component | Current | Latest |
+            |-----------|---------|--------|
+            | caddy | ${{ steps.current.outputs.caddy }} | ${{ steps.latest.outputs.caddy }} |
+            | caddy-security | ${{ steps.current.outputs.security }} | ${{ steps.latest.outputs.security }} |
+          branch: update-versions
+          delete-branch: true
