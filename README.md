@@ -13,7 +13,7 @@ docker pull sedyh/caddy-mfa
 | Component      | Version |
 | -------------- | ------- |
 | caddy          | 2.11.2  |
-| caddy-security | 1.1.60  |
+| caddy-security | 1.1.61  |
 
 ## Usage
 
