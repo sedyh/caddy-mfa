@@ -12,7 +12,7 @@ docker pull sedyh/caddy-mfa
 
 | Component      | Version |
 | -------------- | ------- |
-| caddy          | 2.11.2  |
+| caddy          | 2.11.3  |
 | caddy-security | 1.1.62  |
 
 ## Usage
@@ -20,7 +20,7 @@ docker pull sedyh/caddy-mfa
 ```yaml
 services:
   caddy:
-    image: sedyh/caddy-mfa:2.11.2
+    image: sedyh/caddy-mfa:2.11.3
     restart: unless-stopped
     ports:
       - "80:80"
